@@ -86,9 +86,16 @@
 #define configUSE_APPLICATION_TASK_TAG  1
 #define configQUEUE_REGISTRY_SIZE       0
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY    1
+#define configSUPPORT_STATIC_ALLOCATION 1 /* Allows statis task allocation */
+#define configUSE_TIMERS                1 /* Allows timers */
+
 
 #define configMAX_PRIORITIES        ( 10 )
 #define configMAX_CO_ROUTINE_PRIORITIES ( 2 )
+
+#define configTIMER_TASK_PRIORITY       ( configMAX_PRIORITIES - 1 )
+#define configTIMER_QUEUE_LENGTH        1
+#define configTIMER_TASK_STACK_DEPTH    200
 
 /* Set the following definitions to 1 to include the API function, or zero
  to exclude the API function. */
