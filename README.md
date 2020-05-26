@@ -25,3 +25,4 @@ Allocating a stack of the wrong size leads to a "Sigmentation Fault" error when 
 
 
 ### Scheduling Insights
+Changing the priorities of tasks leads to a change in the order of digits in the output lines, since it changes the order in which tasks are called during the kernel tick. 
