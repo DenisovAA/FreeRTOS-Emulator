@@ -93,7 +93,6 @@ void vAlpha (void *pvParameters)
         }
         if (is_finished) {
             xTaskNotifyGive(OutputTask);
-        //    ulTaskNotifyTake( pdTRUE, portMAX_DELAY );
         }
     }
 }
@@ -150,7 +149,6 @@ void vOutputTask (void *pvParameters)
         vTaskSuspend(Beta);
         vTaskSuspend(Gamma);
         vTaskSuspend(Delta);
-        printf("HENLO!\n");
         if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
             for (int i = 0; i < TICKS_TO_SHOW; i++)
             {
@@ -182,8 +180,6 @@ int main (int argc, char *argv[])
 
     xTaskCreate(vOutputTask, "OutputTask", mainGENERIC_STACK_SIZE, NULL, 5, &OutputTask);
     output.lock = xSemaphoreCreateMutex();
-
-   // vTaskSuspend(OutputTask);
 
     vTaskStartScheduler();
     
