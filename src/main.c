@@ -95,8 +95,6 @@ static TaskHandle_t Beta = NULL;
 static TaskHandle_t Gamma = NULL;
 // Task 4 handler (prority 4)
 static TaskHandle_t Delta = NULL;
-// Output task
-static TaskHandle_t OutputTask = NULL;
 
 // Tasks periods
 const TickType_t AlphaPeriod = 1;
@@ -110,24 +108,28 @@ static QueueHandle_t ResultQueue = NULL;
 static SemaphoreHandle_t GammaSignal = NULL;
 
 /* Shared structures */
+// Handles the keyboard buttons pressed
 typedef struct buttons_buffer {
     unsigned char buttons[SDL_NUM_SCANCODES];
     SemaphoreHandle_t lock;
 } buttons_buffer_t;
 
+// Handles the "LEDs" states for exercise 3
 typedef struct led {
     char state;
     SemaphoreHandle_t lock;
 } led_t;
 
+// Handles the button counters for exercise 3
 typedef struct buttons_counter {
     unsigned short value;
     SemaphoreHandle_t lock;
 } buttons_counter_t;
 
+// Handles the ticks-tasks table for exercise 3
 typedef struct ticks_table
 {
-    unsigned char values[TICKS_TO_SHOW][TASKS_TO_SHOW];
+    char values[TICKS_TO_SHOW][TASKS_TO_SHOW];
     TickType_t start_tick;
     TickType_t stop_tick;
     unsigned short counter;
@@ -236,6 +238,7 @@ initial_state:
                         vTaskResume(ThirdExercise);
                         vTaskResume(FirstLedControlStatic);
                         vTaskResume(SecondLedControl);
+                        vTaskResume(ButtonPressedL);
                     }
                     if (FourthExercise) {
                         vTaskSuspend(FourthExercise);
@@ -252,7 +255,7 @@ initial_state:
                     } 
                     if (FourthExercise) {
                         vTaskResume(FourthExercise);   
-                    } 
+                    }
                     break;
                 default:
                     break;
@@ -371,7 +374,7 @@ void vSecondExercise (void *pvParameters)
     static unsigned short triangle_height = 30;
     static unsigned short spacing = 50;
 
-    static char below_string[11] = "Sample text";
+    static char below_string[11] = "Exercise 2";
     static char above_string[11] = "Sample text";
     static int below_string_width = 0;
     static int above_string_width = 0;
@@ -607,10 +610,10 @@ void vThirdExercise (void *pvParameters)
                 xSemaphoreTake(ScreenLock, portMAX_DELAY);
 
                 tumDrawClear(White);
+                drawHelpText(DEFAULT_FONT_SIZE);
                 vDrawFPS();
                 vDrawLed(first_led, first_led_position, Green);
                 vDrawLed(second_led, second_led_position, Red);
-                
                 vButtonPressedSemaphore(PressedSignalL, KEYCODE(L));
 
                 // Notifying "Button K pressed" action by using xTaskNotifyGive
@@ -662,10 +665,13 @@ void vAlpha (void *pvParameters)
     static unsigned char is_finished = 0;
 
     static unsigned char task_return = 1;
+    if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
+        output.start_tick = xTaskGetTickCount();
+        xSemaphoreGive(output.lock);    
+    }
 
     while (1) {
         vTaskDelayUntil(&last_wake_time, AlphaPeriod);
-        printf("1");
         if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
             if (ResultQueue) {
                 xQueueSend(ResultQueue, &task_return, 0);
@@ -679,12 +685,19 @@ void vAlpha (void *pvParameters)
             output.counter += 1;
             if (output.counter > TICKS_TO_SHOW - 1) {
                 is_finished = 1;
-                output.counter = 0;
+                output.stop_tick = xTaskGetTickCount();
             }
             xSemaphoreGive(output.lock);
         }
         if (is_finished) {
-           
+            vTaskResume(FourthExercise);
+            vTaskResume(SwapBuffers);
+            vTaskResume(StateMachine);
+            
+            vTaskResume(SimpleCounter);
+            vTaskResume(ButtonPressedK);
+            vTaskResume(ButtonPressedL);
+            vTaskSuspend( NULL );
         }
     }
 }
@@ -737,45 +750,84 @@ void vDelta (void *pvParameters)
     }
 }
 
-void vOutputTask (void *pvParameters)
-{
-    while (1) {
-        ulTaskNotifyTake( pdTRUE, portMAX_DELAY );
-        printf("HENLO!\n");
-        if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
-            for (int i = 0; i < TICKS_TO_SHOW; i++)
-            {
-                printf("TICK #%d : ", i);
-                for (int j = 0; j < TASKS_TO_SHOW; j++)
-                {
-                    printf("%d", output.values[i][j]);
-                }
-                printf("\n");
-            }
-            xSemaphoreGive(output.lock);    
-        }
-    }
-}
-
-
 void vFourthExercise (void *pvParameters)
 {
-    while(1) {
+    ResultQueue = xQueueCreate(TASKS_TO_SHOW, sizeof( unsigned char) );
 
-        vTaskResume(Alpha);
-        vTaskResume(Beta);
-        vTaskResume(Gamma);
-        vTaskResume(Delta);
+    xTaskCreate(vAlpha, "Task1", mainGENERIC_STACK_SIZE, NULL, 1, &Alpha);
 
-       if (DrawSignal)
+    xTaskCreate(vBeta, "Task2", mainGENERIC_STACK_SIZE, NULL, 2, &Beta);
+
+    xTaskCreate(vGamma, "Task3", mainGENERIC_STACK_SIZE, NULL, 3, &Gamma);
+    GammaSignal = xSemaphoreCreateBinary();
+
+    xTaskCreate(vDelta, "Task4", mainGENERIC_STACK_SIZE, NULL, 4, &Delta);
+
+    vTaskSuspend(Alpha);
+    vTaskSuspend(Beta);
+    vTaskSuspend(Gamma);
+    vTaskSuspend(Delta);
+
+    vTaskSuspend(SwapBuffers);
+    vTaskSuspend(StateMachine);
+    vTaskSuspend(SimpleCounter);
+    vTaskSuspend(ButtonPressedK);
+    vTaskSuspend(ButtonPressedL);
+    vTaskSuspend(FirstLedControlStatic);
+    vTaskSuspend(SecondLedControl);
+
+    vTaskResume(Alpha);
+    vTaskResume(Beta);
+    vTaskResume(Gamma);
+    vTaskResume(Delta);
+    vTaskSuspend( NULL );
+    
+    static unsigned char is_fetched = 0;
+
+    char values_to_show[TICKS_TO_SHOW][20] = { 0 };
+    char ticks_counter_string[50] = { 0 };
+
+    while(1) {     
+        
+        if (!is_fetched)
+                {
+                    if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
+                        for (int i = 0; i < TICKS_TO_SHOW; i++) {
+                            sprintf(values_to_show[i], "TICK #%d: %d%d%d%d", 
+                                    i,
+                                    output.values[i][0],
+                                    output.values[i][1],
+                                    output.values[i][2],
+                                    output.values[i][3]);
+                        }
+                        sprintf(ticks_counter_string, "Executed in: %d - %d = %d real ticks",
+                                output.stop_tick, output.start_tick, 
+                                output.stop_tick - output.start_tick);
+                        xSemaphoreGive(output.lock);    
+                    }
+                    is_fetched = 1;
+                }
+
+        if (DrawSignal)
             if (xSemaphoreTake(DrawSignal, portMAX_DELAY) == pdTRUE) {
                 xGetButtonInput();
-                xSemaphoreTake(ScreenLock, portMAX_DELAY);
-                tumDrawClear(Red);
+                xSemaphoreTake(ScreenLock, portMAX_DELAY); 
+                tumDrawClear(White);
+                drawHelpText(DEFAULT_FONT_SIZE);
+                vDrawFPS();
+            
+                for (int i = 0; i < TICKS_TO_SHOW - 1; i++)
+                {
+                    tumDrawText(values_to_show[i], DEFAULT_FONT_SIZE, 
+                                1.5 * (i+1) *DEFAULT_FONT_SIZE, Black);
+                }
+                
+                tumDrawText(ticks_counter_string, DEFAULT_FONT_SIZE,
+                            25 * DEFAULT_FONT_SIZE, Black);
                 xSemaphoreGive(ScreenLock);
                 vCheckStateInput();
             }
-    } 
+    }
 }
 
 #define PRINT_TASK_ERROR(task) PRINT_ERROR("Failed to print task ##task");
@@ -838,12 +890,12 @@ int main (int argc, char *argv[])
     
     // Button-triggerable tasks (enabling via synchronization mechanisms)
     xTaskCreate(vButtonPressedL, "L_pressed_control", mainGENERIC_STACK_SIZE,
-                NULL, configMAX_PRIORITIES - 1, &ButtonPressedL);
+                NULL, configMAX_PRIORITIES, &ButtonPressedL);
     PressedSignalL = xSemaphoreCreateBinary();
     button_L.lock = xSemaphoreCreateMutex();
 
     xTaskCreate(vButtonPressedK, "K_pressed_control", mainGENERIC_STACK_SIZE,
-                NULL, configMAX_PRIORITIES - 1, &ButtonPressedK);
+                NULL, configMAX_PRIORITIES, &ButtonPressedK);
     button_K.lock = xSemaphoreCreateMutex();
 
     // Timer initialization
@@ -863,23 +915,10 @@ int main (int argc, char *argv[])
                 NULL, configMAX_PRIORITIES, &SimpleCounter);
     simple_counter.lock = xSemaphoreCreateMutex();
 
+
     /* Fourth Exercise */
     xTaskCreate(vFourthExercise, "FourthExercise", mainGENERIC_STACK_SIZE * 2,
                 NULL, configMAX_PRIORITIES - 1, &FourthExercise);
-
-    ResultQueue = xQueueCreate(TASKS_TO_SHOW, sizeof( unsigned char) );
-
-    xTaskCreate(vAlpha, "Task1", mainGENERIC_STACK_SIZE, NULL, 1, &Alpha);
-
-    xTaskCreate(vBeta, "Task2", mainGENERIC_STACK_SIZE, NULL, 2, &Beta);
-
-    xTaskCreate(vGamma, "Task3", mainGENERIC_STACK_SIZE, NULL, 3, &Gamma);
-    GammaSignal = xSemaphoreCreateBinary();
-
-    xTaskCreate(vDelta, "Task4", mainGENERIC_STACK_SIZE, NULL, 4, &Delta);
-
-    xTaskCreate(vOutputTask, "OutputTask", mainGENERIC_STACK_SIZE, NULL,
-                configMAX_PRIORITIES - 1, &OutputTask);
 
     output.lock = xSemaphoreCreateMutex();
 
@@ -888,13 +927,6 @@ int main (int argc, char *argv[])
     vTaskSuspend(ThirdExercise);
     vTaskSuspend(FirstLedControlStatic);
     vTaskSuspend(SecondLedControl);
-
-    vTaskSuspend(FourthExercise);
-    vTaskSuspend(Alpha);
-    vTaskSuspend(Beta);
-    vTaskSuspend(Gamma);
-    vTaskSuspend(Delta);
-    vTaskSuspend(OutputTask);
 
     vTaskStartScheduler();
 
