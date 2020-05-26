@@ -10,6 +10,11 @@
 - Press [L] to count buttons-pressed actions by using Binary Semaphore (Task 3.2.3)
 - Press [Z] to start/stop "1 second counter" (Task 3.2.4)
 
+### Exercise 3.3.2
+Unfortunately, I was not able to start this task along with all the previous ones.
+I could only make a console implementation, the source code of which can be found in the "4" branch.
+Therefore, the third screen of the emulator is simply red and does not display anything.
+
 ## Answers to the questions
 
 ### What is the kernel tick?
