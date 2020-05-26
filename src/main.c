@@ -84,7 +84,30 @@ static SemaphoreHandle_t PressedSignalL = NULL;
 static QueueHandle_t StateQueue = NULL;
 
 /* Exercise 4 */
-static QueueHandle_t OutputQueue = NULL;
+#define TICKS_TO_SHOW 15
+#define TASKS_TO_SHOW 4
+
+// Task 1 handler (prority 1)
+static TaskHandle_t Alpha = NULL;
+// Task 2 handler (prority 2)
+static TaskHandle_t Beta = NULL;
+// Task 3 handler (prority 3)
+static TaskHandle_t Gamma = NULL;
+// Task 4 handler (prority 4)
+static TaskHandle_t Delta = NULL;
+// Output task
+static TaskHandle_t OutputTask = NULL;
+
+// Tasks periods
+const TickType_t AlphaPeriod = 1;
+const TickType_t BetaPeriod = 2;
+const TickType_t DeltaPeriod = 4;
+
+// Output queue
+static QueueHandle_t ResultQueue = NULL;
+
+// Binary semaphore for Task 3 notification
+static SemaphoreHandle_t GammaSignal = NULL;
 
 /* Shared structures */
 typedef struct buttons_buffer {
@@ -102,12 +125,22 @@ typedef struct buttons_counter {
     SemaphoreHandle_t lock;
 } buttons_counter_t;
 
+typedef struct ticks_table
+{
+    unsigned char values[TICKS_TO_SHOW][TASKS_TO_SHOW];
+    TickType_t start_tick;
+    TickType_t stop_tick;
+    unsigned short counter;
+    SemaphoreHandle_t lock;
+} ticks_table_t;
+
 static buttons_buffer_t buttons = { 0 };
 static led_t first_led = { 0 };
 static led_t second_led = { 0 };
 static buttons_counter_t button_L = { 0 };
 static buttons_counter_t button_K = { 0 };
 static buttons_counter_t simple_counter = { 0 };
+static ticks_table_t output = { 0 };
 
 void checkDraw(unsigned char status, const char *msg)
 {
@@ -216,10 +249,10 @@ initial_state:
                     }
                     if (SecondExercise) {
                         vTaskSuspend(SecondExercise);
-                    }
+                    } 
                     if (FourthExercise) {
-                        vTaskResume(FourthExercise);
-                    }
+                        vTaskResume(FourthExercise);   
+                    } 
                     break;
                 default:
                     break;
@@ -500,6 +533,7 @@ void vButtonPressedK (void *pvParameters)
     }
 }
 
+/* Timer reset counted numbers of buttons "L" and "K" was pressed */
 void vResetTimerCallback (TimerHandle_t ResetTimer)
 {
     if (xSemaphoreTake(button_L.lock, portMAX_DELAY) == pdTRUE) {
@@ -513,6 +547,8 @@ void vResetTimerCallback (TimerHandle_t ResetTimer)
     }
 }
 
+/* Counts "+1" every second. Starts and stop by button "Z"
+   Default state: counting */
 void vSimpleCounter (void *pvParameters)
 {
     TickType_t last_wake_up = xTaskGetTickCount();
@@ -528,6 +564,7 @@ void vSimpleCounter (void *pvParameters)
     }
 }
 
+/* Shows value of SimpleCounter */
 void vDrawSimpleCounter(buttons_counter_t counter, coord_t string_position,
                         char state, unsigned short *last_value)
 {
@@ -613,10 +650,124 @@ void vThirdExercise (void *pvParameters)
     }
 }
 
+/* Fourth Exercise (Task 3.3.2) */
+// First task. Outputs "1" every tick
+void vAlpha (void *pvParameters)
+{
+    TickType_t last_wake_time;
+    last_wake_time = xTaskGetTickCount();
+
+    static unsigned short index = 0;
+    static unsigned char res = 0;
+    static unsigned char is_finished = 0;
+
+    static unsigned char task_return = 1;
+
+    while (1) {
+        vTaskDelayUntil(&last_wake_time, AlphaPeriod);
+        printf("1");
+        if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
+            if (ResultQueue) {
+                xQueueSend(ResultQueue, &task_return, 0);
+                index = 0;
+                while (xQueueReceive(ResultQueue, &res, 0) == pdTRUE) {
+                    output.values[output.counter][index] = res;
+                    index += 1;
+                }
+                xQueueReset(ResultQueue);
+            }
+            output.counter += 1;
+            if (output.counter > TICKS_TO_SHOW - 1) {
+                is_finished = 1;
+                output.counter = 0;
+            }
+            xSemaphoreGive(output.lock);
+        }
+        if (is_finished) {
+           
+        }
+    }
+}
+
+// Second task. Outputs "2" every second tick and
+// calls Third task by binary semaphore
+void vBeta (void *pvParameters)
+{
+    TickType_t last_wake_time;
+    last_wake_time = xTaskGetTickCount();
+    static unsigned char task_return = 2;
+
+    while (1) {
+        vTaskDelayUntil(&last_wake_time, BetaPeriod);
+      
+        xSemaphoreGive(GammaSignal);
+      
+        if (ResultQueue) {
+            xQueueSend(ResultQueue, &task_return, 0);
+        }
+    }
+}
+
+// Third task. Outputs "3" when called by Second task.
+void vGamma (void *pvParameters)
+{
+    static unsigned char task_return = 3;
+
+    while (1)
+        if (GammaSignal)
+            if (xSemaphoreTake(GammaSignal, portMAX_DELAY) == pdTRUE) {
+                if (ResultQueue) {
+                    xQueueSend(ResultQueue, &task_return, 0);
+                } 
+            }
+}
+
+// Fourth task. Outputs "4" every 4 ticks.
+void vDelta (void *pvParameters)
+{
+    TickType_t last_wake_time;
+    last_wake_time = xTaskGetTickCount();
+    static unsigned char task_return = 4;
+
+    while (1) {
+        vTaskDelayUntil(&last_wake_time, DeltaPeriod);
+        if (ResultQueue) {
+            xQueueSend(ResultQueue, &task_return, 0);
+        }
+    }
+}
+
+void vOutputTask (void *pvParameters)
+{
+    while (1) {
+        ulTaskNotifyTake( pdTRUE, portMAX_DELAY );
+        printf("HENLO!\n");
+        if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
+            for (int i = 0; i < TICKS_TO_SHOW; i++)
+            {
+                printf("TICK #%d : ", i);
+                for (int j = 0; j < TASKS_TO_SHOW; j++)
+                {
+                    printf("%d", output.values[i][j]);
+                }
+                printf("\n");
+            }
+            xSemaphoreGive(output.lock);    
+        }
+    }
+}
+
+
 void vFourthExercise (void *pvParameters)
 {
     while(1) {
-        if (DrawSignal)
+
+        vTaskResume(Alpha);
+        vTaskResume(Beta);
+        vTaskResume(Gamma);
+        vTaskResume(Delta);
+
+       if (DrawSignal)
             if (xSemaphoreTake(DrawSignal, portMAX_DELAY) == pdTRUE) {
                 xGetButtonInput();
                 xSemaphoreTake(ScreenLock, portMAX_DELAY);
@@ -624,7 +775,7 @@ void vFourthExercise (void *pvParameters)
                 xSemaphoreGive(ScreenLock);
                 vCheckStateInput();
             }
-    }
+    } 
 }
 
 #define PRINT_TASK_ERROR(task) PRINT_ERROR("Failed to print task ##task");
@@ -649,13 +800,13 @@ int main (int argc, char *argv[])
     
     if (xTaskCreate(basicSequentialStateMachine, "StateMachine",
                     mainGENERIC_STACK_SIZE * 2, NULL, 
-                    configMAX_PRIORITIES - 1, StateMachine) != pdPASS) {
+                    configMAX_PRIORITIES - 1, &StateMachine) != pdPASS) {
         PRINT_ERROR("FSM Task");
                     }
 
     /* Screen updating mechanism initialization */
     xTaskCreate(vSwapBuffers, "BufferSwap", mainGENERIC_STACK_SIZE * 2,
-                NULL, configMAX_PRIORITIES, SwapBuffers);
+                NULL, configMAX_PRIORITIES, &SwapBuffers);
     DrawSignal = xSemaphoreCreateBinary();
     ScreenLock = xSemaphoreCreateMutex();
     // Keyboard MUTEX
@@ -716,12 +867,34 @@ int main (int argc, char *argv[])
     xTaskCreate(vFourthExercise, "FourthExercise", mainGENERIC_STACK_SIZE * 2,
                 NULL, configMAX_PRIORITIES - 1, &FourthExercise);
 
+    ResultQueue = xQueueCreate(TASKS_TO_SHOW, sizeof( unsigned char) );
+
+    xTaskCreate(vAlpha, "Task1", mainGENERIC_STACK_SIZE, NULL, 1, &Alpha);
+
+    xTaskCreate(vBeta, "Task2", mainGENERIC_STACK_SIZE, NULL, 2, &Beta);
+
+    xTaskCreate(vGamma, "Task3", mainGENERIC_STACK_SIZE, NULL, 3, &Gamma);
+    GammaSignal = xSemaphoreCreateBinary();
+
+    xTaskCreate(vDelta, "Task4", mainGENERIC_STACK_SIZE, NULL, 4, &Delta);
+
+    xTaskCreate(vOutputTask, "OutputTask", mainGENERIC_STACK_SIZE, NULL,
+                configMAX_PRIORITIES - 1, &OutputTask);
+
+    output.lock = xSemaphoreCreateMutex();
 
     vTaskSuspend(SecondExercise);
+    
     vTaskSuspend(ThirdExercise);
     vTaskSuspend(FirstLedControlStatic);
     vTaskSuspend(SecondLedControl);
+
     vTaskSuspend(FourthExercise);
+    vTaskSuspend(Alpha);
+    vTaskSuspend(Beta);
+    vTaskSuspend(Gamma);
+    vTaskSuspend(Delta);
+    vTaskSuspend(OutputTask);
 
     vTaskStartScheduler();
 
