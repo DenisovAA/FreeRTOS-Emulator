@@ -10,6 +10,10 @@
 - Press [L] to count buttons-pressed actions by using Binary Semaphore (Task 3.2.3)
 - Press [Z] to start/stop "1 second counter" (Task 3.2.4)
 
+### Exercise 3.3.2
+The result of 15 measures is displayed on the screen once.
+The line “Executed in...” shows the difference between the real tick of the first call of "Task 1" and the real tick of the last, 15th call of "Task 1".
+
 ## Answers to the questions
 
 ### What is the kernel tick?

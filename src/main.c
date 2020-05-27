@@ -782,23 +782,31 @@ void vFourthExercise (void *pvParameters)
     vTaskResume(Delta);
     vTaskSuspend( NULL );
     
-    static unsigned char is_fetched = 0;
+    static int label_text_width = 0;
 
+    static unsigned char is_fetched = 0;
+    static char label_text[100] = "Exercise 3.3.2. Introducing new tasks";
+    
+    tumGetTextSize((char *)label_text, &label_text_width, NULL);
+
+    char string_buffer[4];
     char values_to_show[TICKS_TO_SHOW][20] = { 0 };
     char ticks_counter_string[50] = { 0 };
-
+    
     while(1) {     
         
         if (!is_fetched)
                 {
                     if (xSemaphoreTake(output.lock, 0) == pdTRUE) {
                         for (int i = 0; i < TICKS_TO_SHOW; i++) {
-                            sprintf(values_to_show[i], "TICK #%d: %d%d%d%d", 
-                                    i,
-                                    output.values[i][0],
-                                    output.values[i][1],
-                                    output.values[i][2],
-                                    output.values[i][3]);
+                            for (int j = 0; j < TASKS_TO_SHOW; j++) {
+                                if (output.values[i][j] != 0)
+                                    string_buffer[j] = output.values[i][j] + 48;
+                                else
+                                    string_buffer[j] = ' ';
+                            }
+                            sprintf(values_to_show[i], "TICK #%d: %.4s", 
+                                    i, string_buffer);
                         }
                         sprintf(ticks_counter_string, "Executed in: %d - %d = %d real ticks",
                                 output.stop_tick, output.start_tick, 
@@ -815,15 +823,18 @@ void vFourthExercise (void *pvParameters)
                 tumDrawClear(White);
                 drawHelpText(DEFAULT_FONT_SIZE);
                 vDrawFPS();
-            
+                // Drawind label text
+                tumDrawText(label_text, SCREEN_WIDTH / 2 - label_text_width / 2,
+                            DEFAULT_FONT_SIZE, Red);
+
                 for (int i = 0; i < TICKS_TO_SHOW - 1; i++)
                 {
                     tumDrawText(values_to_show[i], DEFAULT_FONT_SIZE, 
-                                1.5 * (i+1) *DEFAULT_FONT_SIZE, Black);
+                                1.5 * (i+3) *DEFAULT_FONT_SIZE, Black);
                 }
                 
                 tumDrawText(ticks_counter_string, DEFAULT_FONT_SIZE,
-                            25 * DEFAULT_FONT_SIZE, Black);
+                            26 * DEFAULT_FONT_SIZE, Black);
                 xSemaphoreGive(ScreenLock);
                 vCheckStateInput();
             }
